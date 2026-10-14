@@ -1,0 +1,693 @@
+<!doctype html>
+<!--
+  Phishing URL Detection — frontend
+  Talks to the FastAPI backend: GET / (health) and POST /predict.
+
+  The backend has no CORS configured yet. Add this to src/app.py so the browser
+  is allowed to call it from this page:
+
+    from fastapi.middleware.cors import CORSMiddleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],      # tighten to your frontend's origin when you deploy
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+  Then open this file in a browser, or serve it:  python -m http.server 5500
+  Set the API address in the top-right field (default http://127.0.0.1:8000).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phishing URL Detection</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --canvas: #ffffff;
+    --canvas-soft: #fbf9f8;
+    --canvas-tint: #f5f4f2;
+    --canvas-warm: #f1efed;
+    --hairline: #e4e1dd;
+    --divider: #e9e7e4;
+    --field-border: #d4cfca;
+    --ink-deep: #211e1c;
+    --ink: #161513;
+    --link: #006b8f;
+    --focus: #227e9e;
+    --error: #d63b25;
+    --disabled-ink: #aea8a2;
+    --primary: #312d2a;
+    --primary-pressed: #47423e;
+    --on-primary: #ffffff;
+    --brand-mark: #c74634;
+    --accent-gold: #f0cc71;
+    --accent-gold-soft: #f7e0a1;
+    --band-forest: #33553c;
+    --sans: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+    --serif: Georgia, "Times New Roman", serif;
+    --gutter: 72px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-padding-top: 64px; }
+  body {
+    margin: 0;
+    font: 400 16px/1.4 var(--sans);
+    letter-spacing: 0;
+    color: var(--ink);
+    background: var(--canvas);
+  }
+  h1, h2, h3, p { margin: 0; }
+  button, input { font: inherit; letter-spacing: 0; }
+
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  .skip {
+    position: absolute; left: 16px; top: -64px; z-index: 20;
+    background: var(--primary); color: var(--on-primary);
+    padding: 10px 16px; border-radius: 4px; text-decoration: none;
+  }
+  .skip:focus { top: 8px; }
+
+  .wrap { max-width: 1600px; margin: 0 auto; padding: 0 var(--gutter); }
+  .band { padding: 48px 0; }
+
+  /* ---------- Masthead ---------- */
+  .masthead { background: var(--canvas); min-height: 85px; }
+  .masthead .wrap {
+    min-height: 85px; display: flex; align-items: center;
+    justify-content: space-between; gap: 16px 32px; flex-wrap: wrap;
+    padding-top: 12px; padding-bottom: 12px;
+  }
+  .wordmark { font: 800 24px/1.2 var(--sans); color: var(--brand-mark); }
+  .api { display: flex; align-items: center; gap: 16px; flex: 1 1 300px; justify-content: flex-end; flex-wrap: wrap; }
+  .api label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .api input {
+    width: 100%; max-width: 340px; min-width: 200px; flex: 1 1 240px;
+    background: var(--canvas); color: var(--ink);
+    border: 1px solid var(--field-border); border-radius: 6px;
+    padding: 12px 18px;
+  }
+  .status { font-size: 14px; line-height: 20px; }
+  .status.bad { color: var(--error); font-weight: 600; }
+
+  /* ---------- Product sub-navigation ---------- */
+  .subnav {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--ink-deep); height: 64px;
+  }
+  .subnav .wrap { height: 64px; display: flex; gap: 32px; overflow-x: auto; scrollbar-width: none; }
+  .subnav .wrap::-webkit-scrollbar { display: none; }
+  .subnav a {
+    display: flex; align-items: center; height: 64px; flex: none;
+    color: var(--on-primary); text-decoration: none; white-space: nowrap;
+    border-bottom: 5px solid transparent; padding-top: 5px;
+  }
+  .subnav a[aria-current="true"] { border-bottom-color: var(--accent-gold-soft); }
+
+  /* ---------- Hero ---------- */
+  .hero { background: var(--canvas-warm); }
+  .hero h1 { font: 400 56px/1.2 var(--serif); max-width: 820px; }
+  .rule { width: 40px; height: 4px; background: var(--accent-gold); margin: 24px 0; }
+  .lead { font: 400 24px/1.4 var(--sans); max-width: 820px; }
+  form { margin-top: 32px; max-width: 820px; }
+  form > label { display: block; font: 600 14px/20px var(--sans); margin-bottom: 8px; }
+  .row { display: flex; gap: 16px; align-items: stretch; }
+  .row input {
+    flex: 1; min-width: 0;
+    background: var(--canvas); color: var(--ink);
+    border: 1px solid var(--field-border); border-radius: 6px;
+    padding: 12px 18px;
+  }
+  .row input::placeholder { color: var(--disabled-ink); }
+
+  .btn {
+    font: 500 14px/16.8px var(--sans); border-radius: 4px;
+    padding: 14px 16px; cursor: pointer; border: 1px solid transparent;
+    background: var(--primary); color: var(--on-primary); white-space: nowrap;
+  }
+  .btn:hover, .btn:active { background: var(--primary-pressed); }
+  .btn:disabled {
+    background: var(--canvas-soft); color: var(--disabled-ink);
+    border-color: var(--hairline); cursor: default;
+  }
+  .btn.inverse { background: var(--canvas); color: var(--ink); }
+  .btn.inverse:hover, .btn.inverse:active { background: var(--canvas-warm); }
+
+  .examples { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 4px 24px; align-items: baseline; }
+  .examples span { font-size: 14px; line-height: 20px; }
+  .linklike {
+    background: none; border: 0; padding: 0; cursor: pointer;
+    color: var(--link); font: 400 16px/22.4px var(--sans);
+  }
+
+  .notice {
+    margin-top: 16px; background: var(--canvas); color: var(--ink);
+    border: 1px solid var(--error); border-radius: 8px; padding: 12px 16px;
+  }
+  .notice strong { color: var(--error); font-weight: 700; }
+  .notice code { font: 400 14px/20px Consolas, "JetBrains Mono", monospace; background: var(--canvas-tint); padding: 1px 6px; border-radius: 4px; }
+
+  /* ---------- Result band ---------- */
+  .result { color: var(--on-primary); }
+  .result[hidden] { display: none; }
+  .result.phishing { background: var(--ink-deep); }
+  .result.legit { background: var(--band-forest); }
+  .result:focus { outline: none; }
+  .result-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 72px; align-items: start; }
+  .result-url { font-size: 16px; line-height: 22.4px; word-break: break-all; margin-bottom: 16px; }
+  .result h2 { font: 400 56px/1.2 var(--serif); margin-bottom: 18px; }
+  .result .lead { margin-bottom: 16px; }
+  .result .advice { max-width: 640px; margin-bottom: 32px; }
+  .odds { display: flex; gap: 48px; }
+  .odd b { display: block; font: 400 40px/1.2 var(--serif); }
+  .odd span { font-size: 16px; }
+  .meter { height: 12px; border: 1px solid var(--on-primary); margin: 24px 0 12px; }
+  .meter-fill { height: 100%; width: 0; background: var(--on-primary); }
+  @media (prefers-reduced-motion: no-preference) {
+    .meter-fill { transition: width .5s ease; }
+  }
+  .fine { font-size: 14px; line-height: 20px; }
+
+  /* ---------- Sections ---------- */
+  .section-soft { background: var(--canvas-soft); }
+  .section-tint { background: var(--canvas-tint); }
+  .band h2.title { font: 400 36px/1.2 var(--serif); margin-bottom: 18px; }
+  .intro { max-width: 760px; margin-bottom: 32px; }
+
+  .table-wrap { background: var(--canvas); border: 1px solid var(--hairline); border-radius: 8px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 480px; }
+  th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--hairline); vertical-align: middle; }
+  thead th { background: var(--canvas-tint); font: 400 12px/20px var(--sans); }
+  tbody tr:last-child td { border-bottom: 0; }
+  tr.grp th { background: var(--canvas-tint); font: 600 14px/20px var(--sans); }
+  td.name { font-weight: 600; }
+  td.val { font-weight: 700; font-variant-numeric: tabular-nums; }
+  td.val.empty { color: var(--disabled-ink); font-weight: 400; }
+  td.desc { max-width: 380px; }
+  .eff { display: flex; align-items: center; gap: 12px; min-width: 190px; }
+  .eff-bar { position: relative; flex: none; width: 120px; height: 8px; background: var(--canvas-warm); }
+  .eff-bar::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--field-border); }
+  .eff-bar i { position: absolute; top: 0; bottom: 0; }
+  .eff-bar i.pos { left: 50%; background: var(--primary); }
+  .eff-bar i.neg { right: 50%; background: var(--field-border); }
+  .eff-num { font-variant-numeric: tabular-nums; }
+
+  .channels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; margin-top: 32px; }
+  .channel { background: var(--canvas); padding: 24px; }
+  .channel + .channel { border-left: 2px solid var(--divider); }
+  .channel h3 { font: 800 24px/1.2 var(--sans); margin-bottom: 18px; }
+  .channel p + p { margin-top: 12px; }
+  .channel a { color: var(--link); text-decoration: none; }
+
+  /* ---------- Footer ---------- */
+  footer { background: var(--canvas); min-height: 105px; }
+  footer .wrap { padding-top: 24px; padding-bottom: 24px; }
+  footer ul { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 24px; }
+  footer a { color: var(--ink); text-decoration: none; font: 400 12px/20px var(--sans); }
+  footer a:hover { text-decoration: underline; }
+  footer p { font: 400 12px/20px var(--sans); }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 974px) {
+    :root { --gutter: 32px; }
+    .result-grid { gap: 48px; }
+  }
+  @media (max-width: 770px) {
+    .result-grid { grid-template-columns: 1fr; gap: 32px; }
+    .channels { grid-template-columns: 1fr; gap: 16px; }
+    .channel + .channel { border-left: 0; }
+    .api { justify-content: flex-start; }
+  }
+  @media (max-width: 600px) {
+    :root { --gutter: 20px; }
+    .hero h1, .result h2 { font-size: 36px; }
+    .lead { font-size: 20px; }
+    .row { flex-direction: column; }
+    .band h2.title { font-size: 30px; }
+    td.desc, th.desc { display: none; }
+    .odds { gap: 32px; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#check">Skip to content</a>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="wordmark">Phishing URL Detection</div>
+    <div class="api">
+      <label for="api">API address</label>
+      <input id="api" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:8000">
+      <span id="status" class="status" role="status">Checking API…</span>
+    </div>
+  </div>
+</header>
+
+<nav class="subnav" aria-label="Page sections">
+  <div class="wrap">
+    <a href="#check" data-section="check" aria-current="true">Check a URL</a>
+    <a href="#model-input" data-section="model-input">What the model saw</a>
+    <a href="#limits" data-section="limits">What it can't tell you</a>
+  </div>
+</nav>
+
+<main>
+  <section id="check" class="band hero">
+    <div class="wrap">
+      <h1>Check a link before you click it.</h1>
+      <div class="rule" aria-hidden="true"></div>
+      <p class="lead">Paste a full web address. The model scores it as phishing or legitimate from measurements of the URL itself.</p>
+
+      <form id="form" novalidate>
+        <label for="url">Web address</label>
+        <div class="row">
+          <input id="url" name="url" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://example.com/login">
+          <button id="go" class="btn" type="submit">Check URL</button>
+        </div>
+        <div class="examples">
+          <span>Try an example:</span>
+          <button type="button" class="linklike" data-url="https://example.com">Plain domain</button>
+          <button type="button" class="linklike" data-url="https://secure-login.account-verify.example.net/update/password?id=48213">Long login-style address</button>
+          <button type="button" class="linklike" data-url="http://192.168.4.20/secure/login/verify-account.php">IP address host</button>
+        </div>
+        <div id="notice" class="notice" role="alert" hidden></div>
+      </form>
+    </div>
+  </section>
+
+  <section id="result" class="band result" tabindex="-1" aria-labelledby="verdict" hidden>
+    <div class="wrap result-grid">
+      <div>
+        <p id="result-url" class="result-url"></p>
+        <h2 id="verdict"></h2>
+        <p id="verdict-lead" class="lead"></p>
+        <p id="advice" class="advice"></p>
+        <button id="again" class="btn inverse" type="button">Check another URL</button>
+      </div>
+      <div>
+        <div class="odds">
+          <div class="odd"><b id="p-phish"></b><span>Phishing</span></div>
+          <div class="odd"><b id="p-legit"></b><span>Legitimate</span></div>
+        </div>
+        <div id="meter" class="meter" role="img"><div id="meter-fill" class="meter-fill"></div></div>
+        <p class="fine">Estimated probabilities from the model. They aren't a measure of certainty.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="model-input" class="band section-soft">
+    <div class="wrap">
+      <h2 class="title">What the model saw</h2>
+      <p id="features-intro" class="intro"></p>
+      <div class="table-wrap" id="features-table"></div>
+    </div>
+  </section>
+
+  <section id="limits" class="band section-tint">
+    <div class="wrap">
+      <h2 class="title">What it can't tell you</h2>
+      <div class="channels">
+        <div class="channel">
+          <h3>It reads the address, not the page</h3>
+          <p>The model never opens the site. Page content, redirects and security certificates aren't part of the score.</p>
+        </div>
+        <div class="channel">
+          <h3>It doesn't know the domain's reputation</h3>
+          <p>Two sites with similarly shaped URLs score alike, whether the domain is new or years old. No blocklists or DNS lookups are used.</p>
+        </div>
+        <div class="channel">
+          <h3>A score is not a verdict</h3>
+          <p>Words like login or verify raise the score, but plenty of real pages use them. Treat the percentage as a reason to look closer.</p>
+          <p><a id="docs-link" href="#" target="_blank" rel="noopener">Open the API docs</a></p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <ul>
+      <li><a id="foot-docs" href="#" target="_blank" rel="noopener">API docs</a></li>
+      <li><a id="foot-health" href="#" target="_blank" rel="noopener">Health check</a></li>
+    </ul>
+    <p>Scores are estimates from the URL text alone.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  var DEFAULT_API = "http://127.0.0.1:8000";
+
+  // Feature keys exactly as returned by the backend, with plain-language names.
+  var GROUPS = [
+    { name: "Length", rows: [
+      ["url_length", "URL length", "Characters in the whole address"],
+      ["hostname_length", "Hostname length", "Characters in the site name, including subdomains"],
+      ["path_length", "Path length", "Characters after the site name"]
+    ]},
+    { name: "Characters", rows: [
+      ["num_dots", "Dots", "Dots anywhere in the address"],
+      ["num_hyphens", "Hyphens", "Hyphens anywhere in the address"],
+      ["num_slashes", "Slashes", "Slashes anywhere in the address"],
+      ["num_digits", "Digits", "Digits anywhere in the address"],
+      ["num_special_chars", "Special characters", "Anything that isn't a letter or a digit"]
+    ]},
+    { name: "Structure", rows: [
+      ["has_https", "Uses HTTPS", "The address starts with https"],
+      ["has_at_symbol", "Contains @", "An @ sign appears in the address"],
+      ["has_query", "Has a query string", "The address includes a ? section"],
+      ["has_ip", "Host is an IP address", "A raw IP address stands in for a domain name"],
+      ["num_subdomains", "Subdomains", "Parts of the hostname before the main domain"]
+    ]},
+    { name: "Content", rows: [
+      ["has_suspicious_keyword", "Suspicious keyword", "A word such as login, verify, bank or password appears"]
+    ]}
+  ];
+  var BOOLEAN_KEYS = ["has_https", "has_at_symbol", "has_query", "has_ip", "has_suspicious_keyword"];
+
+  var $ = function (id) { return document.getElementById(id); };
+  var els = {
+    api: $("api"), status: $("status"), form: $("form"), url: $("url"), go: $("go"),
+    notice: $("notice"), result: $("result"), resultUrl: $("result-url"), verdict: $("verdict"),
+    verdictLead: $("verdict-lead"), advice: $("advice"), again: $("again"),
+    pPhish: $("p-phish"), pLegit: $("p-legit"), meter: $("meter"), meterFill: $("meter-fill"),
+    featuresIntro: $("features-intro"), featuresTable: $("features-table")
+  };
+
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var requestId = 0;
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+
+  /* ---------- API address ---------- */
+  function normaliseBase(v) {
+    v = (v || "").trim().replace(/\/+$/, "");
+    if (!v) return DEFAULT_API;
+    if (!/^https?:\/\//i.test(v)) v = "http://" + v;
+    return v;
+  }
+  function loadBase() {
+    try { return localStorage.getItem("phish-api") || DEFAULT_API; } catch (e) { return DEFAULT_API; }
+  }
+  function saveBase(v) {
+    try { localStorage.setItem("phish-api", v); } catch (e) { /* storage unavailable */ }
+  }
+  var apiBase = normaliseBase(loadBase());
+  els.api.value = apiBase;
+
+  function updateLinks() {
+    ["docs-link", "foot-docs"].forEach(function (id) { $(id).href = apiBase + "/docs"; });
+    $("foot-health").href = apiBase + "/";
+  }
+
+  function fetchWithTimeout(url, options, ms) {
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, ms);
+    options = options || {};
+    options.signal = controller.signal;
+    return fetch(url, options).finally(function () { clearTimeout(timer); });
+  }
+
+  function checkHealth() {
+    els.status.className = "status";
+    els.status.textContent = "Checking API…";
+    var base = apiBase;
+    fetchWithTimeout(base + "/", {}, 4000)
+      .then(function (res) {
+        if (base !== apiBase) return;
+        if (!res.ok) throw new Error("status " + res.status);
+        els.status.className = "status";
+        els.status.textContent = "API connected";
+      })
+      .catch(function () {
+        if (base !== apiBase) return;
+        els.status.className = "status bad";
+        els.status.textContent = "API not reachable";
+      });
+  }
+
+  els.api.addEventListener("change", function () {
+    apiBase = normaliseBase(els.api.value);
+    els.api.value = apiBase;
+    saveBase(apiBase);
+    updateLinks();
+    checkHealth();
+  });
+
+  /* ---------- Notices ---------- */
+  function hideNotice() { els.notice.hidden = true; els.notice.textContent = ""; }
+  function showNotice(lead, parts) {
+    els.notice.textContent = "";
+    els.notice.appendChild(el("strong", "", lead));
+    els.notice.appendChild(document.createTextNode(" "));
+    (parts || []).forEach(function (p) {
+      if (typeof p === "string") els.notice.appendChild(document.createTextNode(p));
+      else els.notice.appendChild(p);
+    });
+    els.notice.hidden = false;
+  }
+
+  /* ---------- Formatting ---------- */
+  function pct(p) {
+    var v = p * 100;
+    if (v > 0 && v < 1) return "<1%";
+    if (v > 99 && v < 100) return ">99%";
+    return Math.round(v) + "%";
+  }
+  function formatValue(key, v) {
+    if (BOOLEAN_KEYS.indexOf(key) !== -1) return Number(v) ? "Yes" : "No";
+    return String(v);
+  }
+
+  /* ---------- Feature table ---------- */
+  function renderTable(result) {
+    var feats = result && result.features ? result.features : null;
+    var contrib = result && result.contributions && typeof result.contributions === "object" ? result.contributions : null;
+
+    var known = {};
+    var groups = GROUPS.map(function (g) {
+      g.rows.forEach(function (r) { known[r[0]] = true; });
+      return g;
+    });
+    if (feats) {
+      var extra = Object.keys(feats).filter(function (k) { return !known[k]; });
+      if (extra.length) {
+        groups = groups.concat([{ name: "Other", rows: extra.map(function (k) { return [k, k.replace(/_/g, " "), ""]; }) }]);
+      }
+    }
+
+    els.featuresIntro.textContent = contrib
+      ? "The Effect column shows how far each measurement pushed the score toward phishing (+) or legitimate (\u2212)."
+      : "These are the measurements the model receives. They show what was measured, not how much each one changed the score.";
+
+    var maxAbs = 1e-9;
+    if (contrib) Object.keys(contrib).forEach(function (k) { var n = Math.abs(Number(contrib[k])); if (isFinite(n) && n > maxAbs) maxAbs = n; });
+
+    var cols = contrib ? 4 : 3;
+    var table = el("table");
+    var thead = el("thead");
+    var hr = el("tr");
+    hr.appendChild(el("th", "", "Measurement"));
+    hr.appendChild(el("th", "", "Value"));
+    if (contrib) hr.appendChild(el("th", "", "Effect on score"));
+    hr.appendChild(el("th", "desc", "What it measures"));
+    thead.appendChild(hr);
+    table.appendChild(thead);
+
+    var tbody = el("tbody");
+    groups.forEach(function (g) {
+      var gr = el("tr", "grp");
+      var gh = el("th", "", g.name);
+      gh.colSpan = cols;
+      gh.scope = "colgroup";
+      gr.appendChild(gh);
+      tbody.appendChild(gr);
+
+      g.rows.forEach(function (r) {
+        var key = r[0];
+        var tr = el("tr");
+        tr.appendChild(el("td", "name", r[1]));
+
+        var has = feats && Object.prototype.hasOwnProperty.call(feats, key);
+        var vtd = el("td", "val" + (has ? "" : " empty"), has ? formatValue(key, feats[key]) : "\u2014");
+        tr.appendChild(vtd);
+
+        if (contrib) {
+          var etd = el("td");
+          var raw = contrib[key];
+          var n = Number(raw);
+          if (raw === undefined || !isFinite(n)) {
+            etd.textContent = "\u2014";
+          } else {
+            var wrap = el("div", "eff");
+            var bar = el("span", "eff-bar");
+            var fill = el("i", n >= 0 ? "pos" : "neg");
+            fill.style.width = (Math.abs(n) / maxAbs * 50) + "%";
+            bar.appendChild(fill);
+            wrap.appendChild(bar);
+            wrap.appendChild(el("span", "eff-num", (n > 0 ? "+" : n < 0 ? "\u2212" : "") + Math.abs(n).toFixed(3)));
+            etd.appendChild(wrap);
+          }
+          tr.appendChild(etd);
+        }
+
+        tr.appendChild(el("td", "desc", r[2]));
+        tbody.appendChild(tr);
+      });
+    });
+    table.appendChild(tbody);
+
+    els.featuresTable.textContent = "";
+    els.featuresTable.appendChild(table);
+  }
+
+  /* ---------- Result ---------- */
+  function showResult(r) {
+    var phishing = String(r.prediction).toLowerCase() === "phishing";
+    var pPhish = Number(r.phishing_probability);
+    var pLegit = Number(r.legitimate_probability);
+
+    els.result.className = "band result " + (phishing ? "phishing" : "legit");
+    els.resultUrl.textContent = r.url;
+    els.verdict.textContent = r.prediction;
+    els.verdictLead.textContent = "The model puts the chance this URL is phishing at " + pct(pPhish) + ".";
+    els.advice.textContent = phishing
+      ? "Don't open it or enter any details. If you already did, change the password for that account."
+      : "Nothing in the address stood out enough to flag. That doesn't confirm the site is safe.";
+    els.pPhish.textContent = pct(pPhish);
+    els.pLegit.textContent = pct(pLegit);
+    els.meter.setAttribute("aria-label", "Phishing probability " + pct(pPhish) + ", legitimate probability " + pct(pLegit));
+
+    els.meterFill.style.width = "0";
+    els.result.hidden = false;
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () { els.meterFill.style.width = (pPhish * 100) + "%"; });
+    });
+
+    renderTable(r);
+
+    els.result.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    els.result.focus({ preventScroll: true });
+  }
+
+  /* ---------- Submit ---------- */
+  function setBusy(busy) {
+    els.go.disabled = busy;
+    els.go.textContent = busy ? "Checking\u2026" : "Check URL";
+  }
+
+  function networkNotice() {
+    var code = el("code", "", "uvicorn src.app:app --reload");
+    showNotice("Can't reach the API at " + apiBase + ".", [
+      "Start it with ", code, ". If it's already running, the backend needs to allow this page through CORS."
+    ]);
+  }
+
+  function submit(raw) {
+    var value = (raw || "").trim();
+    hideNotice();
+
+    if (!value) {
+      showNotice("Enter a URL to check.", []);
+      els.url.focus();
+      return;
+    }
+    if (!/^https?:\/\/[^\s]+$/i.test(value)) {
+      showNotice("Include the full address.", ["Start with http:// or https:// and leave out spaces, so the model can read the hostname."]);
+      els.url.focus();
+      return;
+    }
+
+    var id = ++requestId;
+    setBusy(true);
+
+    fetchWithTimeout(apiBase + "/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: value })
+    }, 15000)
+      .then(function (res) {
+        if (!res.ok) {
+          return res.text().then(function () {
+            var err = new Error("http");
+            err.status = res.status;
+            throw err;
+          });
+        }
+        return res.json();
+      })
+      .then(function (data) {
+        if (id !== requestId) return;
+        els.status.className = "status";
+        els.status.textContent = "API connected";
+        showResult(data);
+      })
+      .catch(function (err) {
+        if (id !== requestId) return;
+        if (err && err.status) {
+          showNotice("The API returned an error (" + err.status + ").", ["Check the API's console for details, then try again."]);
+        } else {
+          els.status.className = "status bad";
+          els.status.textContent = "API not reachable";
+          networkNotice();
+        }
+      })
+      .finally(function () {
+        if (id === requestId) setBusy(false);
+      });
+  }
+
+  els.form.addEventListener("submit", function (e) { e.preventDefault(); submit(els.url.value); });
+
+  Array.prototype.forEach.call(document.querySelectorAll("[data-url]"), function (btn) {
+    btn.addEventListener("click", function () {
+      els.url.value = btn.getAttribute("data-url");
+      submit(els.url.value);
+    });
+  });
+
+  els.again.addEventListener("click", function () {
+    els.url.value = "";
+    els.url.focus();
+    document.getElementById("check").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+  });
+
+  /* ---------- Sub-navigation highlight ---------- */
+  var navLinks = Array.prototype.slice.call(document.querySelectorAll(".subnav a"));
+  function setActive(section) {
+    navLinks.forEach(function (a) {
+      if (a.getAttribute("data-section") === section) a.setAttribute("aria-current", "true");
+      else a.removeAttribute("aria-current");
+    });
+  }
+  if ("IntersectionObserver" in window) {
+    var map = { "check": "check", "result": "check", "model-input": "model-input", "limits": "limits" };
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting && map[e.target.id]) setActive(map[e.target.id]);
+      });
+    }, { rootMargin: "-64px 0px -60% 0px", threshold: 0 });
+    Object.keys(map).forEach(function (id) { io.observe($(id)); });
+  }
+
+  /* ---------- Init ---------- */
+  updateLinks();
+  renderTable(null);
+  checkHealth();
+})();
+</script>
+</body>
+</html>
