@@ -11,13 +11,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Model paths
 MODEL_PATH = BASE_DIR / "models" / "phishing_rf_model.joblib"
 FEATURE_COLUMNS_PATH = BASE_DIR / "models" / "feature_columns.joblib"
-SHAP_EXPLAINER_PATH = BASE_DIR / "models" / "shap_explainer.joblib"
+
 
 
 # Load saved artifacts
 model = joblib.load(MODEL_PATH)
 feature_columns = joblib.load(FEATURE_COLUMNS_PATH)
-shap_explainer = joblib.load(SHAP_EXPLAINER_PATH)
+
 
 
 def predict_url(url):
