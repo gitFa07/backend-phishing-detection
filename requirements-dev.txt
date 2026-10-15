@@ -1,0 +1,4 @@
+# Everything needed to run the project locally and its tests.
+-r requirements.txt
+pytest>=8
+# httpx (already pinned in requirements.txt) powers FastAPI's test client.

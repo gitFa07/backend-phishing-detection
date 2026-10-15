@@ -1,0 +1,15 @@
+# Render "Blueprint" for the backend. The frontend is a static site: see DEPLOYMENT.md.
+services:
+  - type: web
+    name: phishing-api
+    runtime: docker
+    healthCheckPath: /health
+    envVars:
+      - key: CORS_ALLOW_ORIGINS
+        sync: false          # you enter this in the dashboard: your frontend's origin
+      - key: TRUSTED_PROXY_COUNT
+        sync: false          # see DEPLOYMENT.md, "Rate limiting behind a proxy"
+      - key: SAFE_BROWSING_API_KEY
+        sync: false          # optional
+      - key: LOG_LEVEL
+        value: INFO
